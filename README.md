@@ -1,4 +1,4 @@
-🛕 Temple Darshan Queue Management System
+🛕 Temple Darshan Queue Management System:
 Our project comes under the Custom Data Structure theme. It is a command-line based queue management system for organizing darshan (visits) at a temple. The system ensures fair, efficient, and prioritized handling of visitors based on their category such as VIPs, senior citizens, disabled individuals, and general public. It uses a round-robin approach to serve visitors in a fair manner while also giving priority to those who need it most.
 
 🚀 Features
