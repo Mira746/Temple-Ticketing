@@ -1,0 +1,19 @@
+CREATE TABLE visitors (
+    token INT PRIMARY KEY,
+    name VARCHAR(100),
+    age INT,
+    category VARCHAR(20),
+    status VARCHAR(20)
+);
+
+CREATE TABLE logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token INT,
+    name VARCHAR(100),
+    age INT,
+    category VARCHAR(20),
+    time_entered TIMESTAMP,
+    time_served TIMESTAMP,
+    duration_seconds INT,
+    FOREIGN KEY (token) REFERENCES visitors(token)
+);
