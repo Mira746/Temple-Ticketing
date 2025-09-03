@@ -1,0 +1,277 @@
+class Visitor {
+    String name;
+    int age;
+    String category;
+    int token;
+
+    public Visitor(String name, int age, String category, int token) {
+        this.name = name;
+        this.age = age;
+        this.category = category;
+        this.token = token;
+    }
+
+    @Override
+    public String toString() {
+        return name + " (Age: " + age + ", Category: " + category + ", Token: " + token + ")";
+    }
+}
+
+
+import java.sql.*;
+import java.util.*;
+
+public class VisitorDAO {
+    private static final String URL = "jdbc:mysql://localhost:3306/temple_db";
+    private static final String USER = "root";      // change if needed
+    private static final String PASSWORD = "root";  // change if needed
+
+    public VisitorDAO() {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Insert new visitor
+    public void addVisitor(Visitor visitor) {
+        String sql = "INSERT INTO visitors (token, name, age, category, status) VALUES (?, ?, ?, ?, 'WAITING')";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, visitor.token);
+            ps.setString(2, visitor.name);
+            ps.setInt(3, visitor.age);
+            ps.setString(4, visitor.category);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Update status (when served)
+    public void updateVisitorStatus(int token, String status) {
+        String sql = "UPDATE visitors SET status=? WHERE token=?";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, status);
+            ps.setInt(2, token);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Fetch waiting visitors
+    public List<Visitor> getAllVisitors() {
+        List<Visitor> list = new ArrayList<>();
+        String sql = "SELECT * FROM visitors WHERE status='WAITING' ORDER BY token";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                Visitor v = new Visitor(
+                    rs.getString("name"),
+                    rs.getInt("age"),
+                    rs.getString("category"),
+                    rs.getInt("token")
+                );
+                list.add(v);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    // Fetch served visitors
+    public List<Visitor> getServedVisitors() {
+        List<Visitor> list = new ArrayList<>();
+        String sql = "SELECT * FROM visitors WHERE status='SERVED' ORDER BY token";
+        try (Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                Visitor v = new Visitor(
+                    rs.getString("name"),
+                    rs.getInt("age"),
+                    rs.getString("category"),
+                    rs.getInt("token")
+                );
+                list.add(v);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+}
+
+import java.util.*;
+
+class FairQueueTempleDarshan {
+    Map<String, Queue<Visitor>> queues;
+    String[] categoryOrder = {"VIP", "DISABLED", "SENIOR", "GENERAL"};
+    int tokenCounter = 1;
+    int categoryIndex = 0;
+    int totalServed = 0;
+
+    VisitorDAO visitorDAO = new VisitorDAO();  // ✅ Added DB connection
+
+    public FairQueueTempleDarshan() {
+        queues = new LinkedHashMap<>();
+        for (String cat : categoryOrder) {
+            queues.put(cat, new LinkedList<>());
+        }
+
+        // ✅ Load existing waiting visitors from DB
+        List<Visitor> existingVisitors = visitorDAO.getAllVisitors();
+        for (Visitor v : existingVisitors) {
+            queues.get(v.category).add(v);
+            tokenCounter = Math.max(tokenCounter, v.token + 1);
+        }
+    }
+
+    public void addVisitor(String name, int age, String category) {
+        int token = tokenCounter++;
+        if (category.equals("GENERAL") && age >= 60) {
+            System.out.println(" Auto-upgraded " + name + " from GENERAL to SENIOR due to age.");
+            category = "SENIOR";
+        }
+        Visitor visitor = new Visitor(name, age, category, token);
+        queues.get(category).add(visitor);
+        System.out.println("Added: " + visitor);
+
+        visitorDAO.addVisitor(visitor); // ✅ Store in DB
+    }
+
+    public void processNextVisitor() {
+        for (int i = 0; i < categoryOrder.length; i++) {
+            String currentCategory = categoryOrder[categoryIndex];
+            if (!queues.get(currentCategory).isEmpty()) {
+                Visitor visitor = queues.get(currentCategory).poll();
+                System.out.println("\n Processing Visitor: " + visitor);
+                System.out.println(" Visitor with Token " + visitor.token + " is now proceeding for Darshan.");
+                totalServed++;
+
+                visitorDAO.updateVisitorStatus(visitor.token, "SERVED"); // ✅ Update in DB
+
+                categoryIndex = (categoryIndex + 1) % categoryOrder.length;
+                return;
+            }
+            categoryIndex = (categoryIndex + 1) % categoryOrder.length;
+        }
+        System.out.println("\n No visitors in queue.");
+    }
+
+    public void peekNextVisitor() {
+        int originalIndex = categoryIndex;
+        for (int i = 0; i < categoryOrder.length; i++) {
+            String currentCategory = categoryOrder[categoryIndex];
+            if (!queues.get(currentCategory).isEmpty()) {
+                System.out.println("\n Next in line: " + queues.get(currentCategory).peek());
+                categoryIndex = originalIndex;
+                return;
+            }
+            categoryIndex = (categoryIndex + 1) % categoryOrder.length;
+        }
+        System.out.println("\n No visitors in queue.");
+    }
+
+    public void showQueue() {
+        System.out.println("\n Current Queue Status:");
+        for (String cat : categoryOrder) {
+            System.out.println(cat + ":");
+            for (Visitor visitor : queues.get(cat)) {
+                System.out.println("  - " + visitor);
+            }
+        }
+        System.out.println("\n Total Visitors Served: " + totalServed + "\n");
+    }
+
+    // ✅ New method to show served visitors from DB
+    public void showServedVisitors() {
+        System.out.println("\n Served Visitors:");
+        List<Visitor> served = visitorDAO.getServedVisitors();
+        if (served.isEmpty()) {
+            System.out.println(" No visitors have been served yet.");
+        } else {
+            for (Visitor v : served) {
+                System.out.println("  - " + v);
+            }
+        }
+    }
+}
+
+
+import java.util.*;
+
+public class TempleDarshanSystem {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+        FairQueueTempleDarshan templeQueue = new FairQueueTempleDarshan();
+
+        while (true) {
+            System.out.println("\n---- Temple Darshan Ticketing ----");
+            System.out.println("1. Add Visitor");
+            System.out.println("2. Process Next Visitor");
+            System.out.println("3. Peek Next Visitor");
+            System.out.println("4. Show Queue");
+            System.out.println("5. Show Served Visitors (DB)");
+            System.out.println("6. Exit");
+            System.out.print("Enter your choice: ");
+            String choice = sc.nextLine().trim();
+
+            switch (choice) {
+                case "1":
+                    System.out.print("Enter Visitor Name: ");
+                    String name = sc.nextLine().trim();
+                    if (name.isEmpty()) {
+                        System.out.println(" Name cannot be empty.");
+                        continue;
+                    }
+                    System.out.print("Enter Age: ");
+                    int age;
+                    try {
+                        age = Integer.parseInt(sc.nextLine().trim());
+                    } catch (NumberFormatException e) {
+                        System.out.println(" Invalid age. Please enter a valid number.");
+                        continue;
+                    }
+                    System.out.print("Enter Category (VIP / Disabled / Senior / General): ");
+                    String category = sc.nextLine().trim().toUpperCase();
+                    if (!Arrays.asList("VIP", "DISABLED", "SENIOR", "GENERAL").contains(category)) {
+                        System.out.println(" Invalid category. Please choose from VIP, Disabled, Senior, or General.");
+                        continue;
+                    }
+                    templeQueue.addVisitor(name, age, category);
+                    break;
+
+                case "2":
+                    templeQueue.processNextVisitor();
+                    break;
+
+                case "3":
+                    templeQueue.peekNextVisitor();
+                    break;
+
+                case "4":
+                    templeQueue.showQueue();
+                    break;
+
+                case "5":
+                    templeQueue.showServedVisitors(); // ✅ From DB
+                    break;
+
+                case "6":
+                    System.out.println("\n Exiting. Have a blessed day!");
+                    sc.close();
+                    return;
+
+                default:
+                    System.out.println(" Invalid choice. Please enter a number between 1 and 6.");
+            }
+        }
+    }
+}
+
